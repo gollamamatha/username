@@ -1,8 +1,8 @@
 const express = require("express");
 const path = require("path");
-const app = express();
-const bcrypt = require("bcrypt");
 
+const bcrypt = require("bcrypt");
+const app = express();
 const { open } = require("sqlite");
 const sqlite3 = require("sqlite3");
 app.use(express.json());
@@ -13,7 +13,7 @@ let db = null;
 
 const initialization = async () => {
   try {
-    const db = await open({
+    db = await open({
       filename: dbPath,
       driver: sqlite3.Database,
     });
@@ -30,21 +30,21 @@ initialization();
 //user
 
 app.post("/register/", async (request, response) => {
-  let { username, name, password, gender, location } = request.body;
+  let { userName, name, password, gender, location } = request.body;
 
   let hashedPassword = await bcrypt.hash(password, 10);
 
   let checkTheUsername = `
             SELECT *
             FROM user
-            WHERE username = '${username}';`;
+            WHERE username = '${userName}';`;
   let userData = await db.get(checkTheUsername);
   if (userData === undefined) {
     let postNewUserQuery = `
             INSERT INTO
             user (username,name,password,gender,location)
             VALUES (
-                '${username}',
+                '${userName}',
                 '${name}',
                 '${hashedPassword}',
                 '${gender}',
@@ -62,3 +62,55 @@ app.post("/register/", async (request, response) => {
     response.send("User already exists");
   }
 });
+
+//login
+
+app.post("/login", async (request, response) => {
+  const { username, password } = request.body;
+  const selectUserQuery = `SELECT * FROM user WHERE username = '${username}'`;
+  const dbUser = await db.get(selectUserQuery);
+  if (dbUser === undefined) {
+    response.status(400);
+    response.send("Invalid User");
+  } else {
+    const isPasswordMatched = await bcrypt.compare(password, dbUser.password);
+    if (isPasswordMatched === true) {
+      response.send("Login Success!");
+    } else {
+      response.status(400);
+      response.send("Invalid Password");
+    }
+  }
+});
+//change-password
+
+app.put("/change-password/", async (request, response) => {
+  const { userName, oldPassword, newPassword } = request.body;
+  const userDetails = `SELECT * FROM user WHERE username='${userName}'`;
+  const dbUser = await db.get(userDetails);
+  if (dbUser === undefined) {
+    response.status(400);
+    response.status("User not registered");
+  } else {
+    const inValid = await bcrypt.compare(oldPassword, dbUser.password);
+    if (inValid === true) {
+      const lengthPassword = newPassword.length;
+      if (lengthPassword < 5) {
+        response.status(400);
+        response.status("Password is too short");
+      } else {
+        const encryptedPassword = await bcrypt.hash(newPassword, 10);
+        const upDate = `UPDATE  user 
+                set password ='${encryptedPassword}'
+                WHERE username='${userName}'`;
+        await db.run(upDate);
+        response.status(400);
+        response.send("Password updated");
+      }
+    } else {
+      response.status(400);
+      response.status("Invalid current password");
+    }
+  }
+});
+module.exports = app;
